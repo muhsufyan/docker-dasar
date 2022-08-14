@@ -1,45 +1,31 @@
-# VOLUME
-Di versi docker terbaru tdk direkomendasikan use bind mount but use docker volume
-<br>similiar bind mount, volume can management operation like make volume, see list volume, rmove/delete volume<br>
-volume dianggap sbg storage u/ menyimpan data (pd bind mounts data disimpan dlm host scra langsung) di volume data dimanage didlm docker (disimpan dlm docker)<br>
-by deafult all data disimpan didlm volume, volume dibuat scra otomatis sehingga nama volume itu acak (auto generate)<br>
-melihat list volume<b>docker volume ls</b><br>
-membuat volume : <b>docker volume create {nama volume}</b><br>
-volume ini ibaratnya harddisk kosong, volume dpt dihapus tp container hrs di nonactive<br>
-menghapus volume : <b>docker volume rm {nama volume}</b><br>
+# NETWORK
+by default setiap container terisolasi satu dg lainnya, jd container tdk dpt memanggil container lainnya. <br>
+dg Network kita dpt menghub container satu dg lainnya (dpt berkomunikasi) selama dalam 1 network yg sama<br>
+in network, can management network like see, make, delete network<br>
+when make network we need set driver apa yg akan we use. banyak jenis dr network & kadang network tertentu perlu syarat"<br>
+1. bridge => driver make virtual network so container can connection inside same bridge<br>
+2. host => driver make network same with host system but syaratnya hanya jln di linux saja.<br>
+3. none => default driver that network cant connection each other. container cant connection each other<br>
+see docker network : <b> docker network ls</b><br>
+make a new network : <b>docker network create --driver {nama driver (host, bridge, none)/ if empty default is bridge} {nama network}</b><br>
+delete network : <b>docker network rm {nama network}</b><br>
+ketika ingin menghapus network maka container yg memakai network tersebut hrs dihapus dahulu dari network yg akan dihapus<br>
+contoh docker network create --driver bridge mongonetwork<br>
+# CONTAINER NETWORK
 
-# CONTAINER VOLUME
-mengintegrasikan volume dg container, agar data tetap aman<br>
-cara use volume pd param --mount type nya isi dengan volume dan source diisi dengan nama volume<br>
-pertama buat dulu volume nya ex docker volume create nginxvolume<br>lalu buat container barunya yg menggunakan volume tsb<br>
-<b>docker container create --name {nama container} --mount "type=volume,source={nama volume},destination={lokasi file/folder inside container},readonly" {image}={tag}</b><br>
-ex <b>docker run -d -it --name broken-container --mount "type=volume,source=nginxvolume,target=/usr/data" nginx:latest</b>
-
-# BACKUP VOLUME
-backup data dlm volume hrs dilakukan scra manual, cara backup volume adlh buat container baru lalu backup datanya dan simpan di archive (tar / zip) dan terakhir archive-nya disimpan di bind mounts<br>
-tahap melakukan backup dapat dilihat di https://docs.google.com/presentation/d/1LoCIoqR68t-y7P7eOs_TVoooZy4mq-tc2cwInQAtfy0/edit#slide=id.p slide ke 89<br>contoh <br>
-1. docker container stop mongovolume<br>
-2. di host buat folder baru ex backup<br>
-3. docker container create --name nginxbackup --mount "type=bind,source=/Users/khannedy/Developments/YOUTUBE/belajar-docker-dasar/backup,destination=/backup" --mount "type=volume,source=mongodata,destination=/data" nginx:latest <br>
-4. docker container start nginxbackup<br>
-5. docker container exec -i -t nginxbackup /bin/bash<br>
-ls -l masuk ke /data hrsnya ada isinya lalu<br>
-6. cd backup<br>
-7. tar cvf /backup/backup.tar.gz /data : folder /data dibackup kedlm fole backup.tar.gz<br>
-8. docker container stop nginxbackup<br>
-9. docker container rm nginxbackup<br>
-10. docker container start mongovolume<br>
-
-CARA KEDUA, menggunakan perintah run (jlnkan perintah dicontainer) lalu --rm (otomatis hapus container stlh perintah dicontainer selesai)<br>
-docker container run --rm --name ubuntubackup --mount "type=bind,source=/Users/khannedy/Developments/YOUTUBE/belajar-docker-dasar/backup,destination=/backup" --mount "type=volume,source=mongodata,destination=/data" ubuntu:latest tar cvf /backup/backup-lagi.tar.gz /data<br>
-docker container start mongovolume<br>
-
-# RESTORE VOLUME
-menggunakan achive backup di volume baru, ex percobaan agar tahu apakah data backupnya corrupt ?<br>
-<b>docker volume create mongorestore</b><br>
-buat containernya cukup dijlnkan 1 kali yaitu untuk restore saja. ini sama sprti backup<br>
-<b>docker container run --rm --name ubunturestore --mount "type=bind,source=/Users/khannedy/Developments/YOUTUBE/belajar-docker-dasar/backup,destination=/backup" --mount "type=volume,source=mongorestore,destination=/data" ubuntu:latest bash -c "cd /data && tar xvf /backup/backup.tar.gz --strip 1"</b><br>
-perintah untuk extract data => cd /data && tar xvf /backup/backup.tar.gz --strip 1<br> 
-buat container baru yg menggunakan data backup<br>
-<b>docker container create --name mongorestore --publish 27020:27017 --mount "type=volume,source=mongorestore,destination=/data/db" --env MONGO_INITDB_ROOT_USERNAME=eko --env MONGO_INITDB_ROOT_PASSWORD=eko mongo:latest</b><br>
-<b>docker container start mongorestore</b><br>
+menambahkan container ke network yg tlh kita buat sehingga container" dlm network dpt berkomunikasi<br>
+cara container a mengakses container b dlm 1 network bridge cukup gunakan nama host nya b, nama host = nama container<br>
+<u>ex studi kasusnya mongo express must connect to mongodb</u><br>
+buat container dan append container to network use --network: docker container create --name {nama container} --network {nama network} {image}:{tag}<b><br>
+contoh<br>
+docker container create --name mongodb --network mongonetwork --env MONGO_INITDB_ROOT_USERNAME=eko --env MONGO_INITDB_ROOT_PASSWORD=eko mongo:latest<br>
+docker image pull mongo-express:latest<br>
+docker container create --name mongodbexpress --network mongonetwork --publish 8081:8081 --env ME_CONFIG_MONGODB_URL="mongodb://eko:eko@mongodb:27017/" mongo-express:latest<br>
+now mongodb & mongo expressconnected, in mongo express env ME_CONFIG_MONGODB_URL is punya nya container mongodb bukan host (pc/laptop) ex mongodb:27017 => port 27017 adlh milik container mongodb bukan host pc/laptop & juga mongo adlh host dari container mongodb bukan host pc/laptop.<br>
+stlh join kita ingin hapus container dari network caranya dg perintah<br>
+<b>docker network disconnect {name network} {nama container}</b><br>
+ex container mongodb keluar dari network mongonetwork menyebabkan mongoexpress tdk dpt berkomunikasi dg mongodb maka perintahnya<br>
+docker network disconnect mongonetwork mongodb<br>
+menambah container kedalam suatu network : <b>docker network connect {nama network} {nama container}</b><br>
+ex memasukkan container mongodb kedalam network mongonetwork sehingga mongoexpress dpt berkomunikasi dg mongodb lagi perintahnya<br>
+docker network connect mongonetwork mongodb<br>
